@@ -308,7 +308,7 @@ class MilestoneTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeIt
                 const label = index === 0 ? ' (Latest)' : '';
                 item.description = `${milestone.date} ${milestone.time} (${shortHash})${label}`;
                 item.tooltip = 
-                    `Milestone: ${milestone.message}\n` +
+                    `${milestone.message}\n` +
                     `Created: ${milestone.date} ${milestone.time}\n` +
                     `Commit: ${milestone.hash}\n\n` +
                     `Click to revert to this milestone`;
