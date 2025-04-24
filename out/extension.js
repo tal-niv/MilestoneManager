@@ -11,7 +11,7 @@ class MilestoneManager {
         this.context = context;
         this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
         this.statusBarItem.command = 'milestone-manager.createMilestone';
-        this.statusBarItem.text = '$(pin)'; // Using pin marker for milestone
+        this.statusBarItem.text = '$(milestone)'; // Using milestone flag icon
         this.context.subscriptions.push(this.statusBarItem);
         this.treeDataProvider = new MilestoneTreeDataProvider(this);
         this.initializeMilestoneList();
@@ -47,29 +47,29 @@ class MilestoneManager {
         try {
             const workspacePath = this.getWorkspacePath();
             if (!await this.isGitRepository(workspacePath)) {
-                this.statusBarItem.text = '$(pin) Not a git repository';
+                this.statusBarItem.text = '$(milestone) Not a git repository';
                 this.statusBarItem.show();
                 return;
             }
             const milestoneInfo = await this.getCurrentMilestone();
             const hasAnyMilestones = await this.hasMilestones();
             if (milestoneInfo) {
-                this.statusBarItem.text = `$(pin) ${milestoneInfo}`;
+                this.statusBarItem.text = `$(milestone) ${milestoneInfo}`;
                 this.statusBarItem.tooltip = 'Create milestone';
             }
             else if (!hasAnyMilestones) {
-                this.statusBarItem.text = '$(pin) Create milestone';
+                this.statusBarItem.text = '$(milestone) Create milestone';
                 this.statusBarItem.tooltip = 'Click to create your first milestone';
             }
             else {
-                this.statusBarItem.text = '$(pin) Create milestone';
+                this.statusBarItem.text = '$(milestone) Create milestone';
                 this.statusBarItem.tooltip = 'Create new milestone';
             }
             this.statusBarItem.show();
         }
         catch (error) {
             console.error('Status bar update error:', error);
-            this.statusBarItem.text = '$(pin) Error';
+            this.statusBarItem.text = '$(milestone) Error';
             this.statusBarItem.tooltip = 'Error updating milestone status';
             this.statusBarItem.show();
         }
