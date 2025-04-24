@@ -1,0 +1,94 @@
+{
+  "name": "milestone-manager",
+  "displayName": "Milestone Manager",
+  "description": "A simple way to create and manage code milestones through git commits",
+  "version": "1.0.0",
+  "publisher": "milestone-manager-dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/microsoft/vscode-extension-samples.git"
+  },
+  "icon": "resources/milestones-big.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "milestone",
+    "version control",
+    "commit management"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "milestone-manager.createMilestone",
+        "title": "Create Milestone"
+      },
+      {
+        "command": "milestone-manager.revertToMilestone",
+        "title": "Revert to Milestone"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "milestone-manager",
+          "title": "Milestone Manager",
+          "icon": "resources/milestones-small.png"
+        }
+      ]
+    },
+    "views": {
+      "milestone-manager": [
+        {
+          "id": "milestoneList",
+          "name": "Milestones"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "milestone-manager.createMilestone",
+          "when": "view == milestoneList",
+          "group": "navigation"
+        }
+      ]
+    },
+    "iconFonts": [
+      {
+        "id": "milestone-icons",
+        "src": [
+          {
+            "path": "./resources/milestones-tiny.png",
+            "format": "png"
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.11.19",
+    "@typescript-eslint/eslint-plugin": "^7.0.1",
+    "@typescript-eslint/parser": "^7.0.1",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  }
+} 
