@@ -96,6 +96,12 @@ None at the moment.
 
 ## Release Notes
 
+### 1.0.1
+
+- Fixed bug: Milestones are now isolated to specific branches
+- Improved milestone tracking with branch-specific commit messages
+- Enhanced milestone display in the milestones panel
+
 ### 1.0.0
 
 Initial release of Milestone Manager with core features:
