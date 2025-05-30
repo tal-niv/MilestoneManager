@@ -15,10 +15,10 @@ interface Milestone {
 
 class MilestoneManager {
     private statusBarItem: vscode.StatusBarItem;
-    private milestoneList!: vscode.TreeView<any>;
-    private treeDataProvider: MilestoneTreeDataProvider;
+    private webviewPanel: vscode.WebviewPanel | undefined;
     private gitHeadWatcher: fs.StatWatcher | null = null;
     private currentBranch: string | null = null;
+    private treeDataProvider: MilestoneTreeDataProvider;
 
     constructor(private context: vscode.ExtensionContext) {
         this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -26,8 +26,8 @@ class MilestoneManager {
         this.statusBarItem.text = '$(milestone)'; // Using milestone flag icon
         this.context.subscriptions.push(this.statusBarItem);
         
-        this.treeDataProvider = new MilestoneTreeDataProvider(this);
-        this.initializeMilestoneList();
+        this.treeDataProvider = new MilestoneTreeDataProvider();
+        this.initializeViews();
         this.updateStatusBar();
         this.setupBranchWatcher();
 
@@ -35,16 +35,54 @@ class MilestoneManager {
         this.context.subscriptions.push(
             vscode.workspace.onDidChangeWorkspaceFolders(() => {
                 this.updateStatusBar();
-                this.treeDataProvider.refresh();
+                this.updateWebview();
                 this.setupBranchWatcher();
             })
         );
     }
 
-    private initializeMilestoneList() {
-        this.milestoneList = vscode.window.createTreeView('milestoneList', {
+    private initializeViews() {
+        // Create tree view for activity bar
+        vscode.window.createTreeView('milestoneView', {
             treeDataProvider: this.treeDataProvider
         });
+    }
+
+    private initializeMilestoneView() {
+        // Create webview panel
+        this.webviewPanel = vscode.window.createWebviewPanel(
+            'milestoneManager',
+            'Milestones',
+            vscode.ViewColumn.One,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true
+            }
+        );
+
+        this.webviewPanel.onDidDispose(() => {
+            this.webviewPanel = undefined;
+        });
+
+        // Handle messages from webview
+        this.webviewPanel.webview.onDidReceiveMessage(async (message) => {
+            switch (message.command) {
+                case 'updateBaseBranches':
+                    await this.updateBaseBranchesFromWebview(message.value);
+                    break;
+                case 'createMilestone':
+                    await this.createMilestone();
+                    break;
+                case 'revertToMilestone':
+                    await this.revertToMilestone(message.hash);
+                    break;
+                case 'refresh':
+                    await this.refresh();
+                    break;
+            }
+        });
+
+        this.updateWebview();
     }
 
     private getWorkspacePath(): string {
@@ -145,7 +183,7 @@ class MilestoneManager {
                 
                 vscode.window.showInformationMessage('Milestone created successfully!');
                 this.updateStatusBar();
-                this.treeDataProvider.refresh();
+                this.updateWebview();
             } catch (error) {
                 if (error instanceof Error) {
                     throw new Error(`Git operation failed: ${error.message}`);
@@ -174,10 +212,15 @@ class MilestoneManager {
             const { stdout: branchName } = await execAsync('git symbolic-ref --short HEAD', { cwd: workspacePath });
             const currentBranch = branchName.trim();
 
-            // Check if branch is master or main
+            // Check if branch is a protected base branch
+            const baseBranches = this.getBaseBranches();
             const lowerBranch = currentBranch.toLowerCase();
-            if (lowerBranch === 'master' || lowerBranch === 'main') {
-                vscode.window.showErrorMessage('Cannot force push to master or main branch. Please switch to a different branch first.');
+            const isBaseBranch = baseBranches.some(branch => branch.toLowerCase() === lowerBranch);
+            
+            if (isBaseBranch) {
+                vscode.window.showErrorMessage(
+                    `Cannot force push to base branch '${currentBranch}'. Protected branches: ${baseBranches.join(', ')}. Please switch to a different branch first.`
+                );
                 return;
             }
 
@@ -207,7 +250,7 @@ class MilestoneManager {
                 
                 vscode.window.showInformationMessage(`Successfully reset to milestone and updated remote`);
                 this.updateStatusBar();
-                this.treeDataProvider.refresh();
+                this.updateWebview();
             } catch (error) {
                 if (error instanceof Error) {
                     throw new Error(`Git operation failed: ${error.message}`);
@@ -354,7 +397,7 @@ class MilestoneManager {
                 
                 // Silently refresh milestone data
                 this.updateStatusBar();
-                this.treeDataProvider.refresh();
+                this.updateWebview();
             } else {
                 console.log('Branch unchanged, no refresh needed');
             }
@@ -366,7 +409,91 @@ class MilestoneManager {
                 console.log('Setting current branch to null and refreshing');
                 this.currentBranch = null;
                 this.updateStatusBar();
-                this.treeDataProvider.refresh();
+                this.updateWebview();
+            }
+        }
+    }
+
+    private getBaseBranches(): string[] {
+        const hardcodedBranches = ['master', 'main'];
+        const config = vscode.workspace.getConfiguration('milestone-manager');
+        const additionalBranches = config.get<string>('additionalBaseBranches', '');
+        
+        console.log('Reading base branches config:', {
+            workspace: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || 'none',
+            additionalBranches,
+            configInspection: config.inspect('additionalBaseBranches')
+        });
+        
+        if (additionalBranches.trim()) {
+            const configuredBranches = additionalBranches
+                .split(';')
+                .map(branch => branch.trim())
+                .filter(branch => branch.length > 0);
+            
+            return [...hardcodedBranches, ...configuredBranches];
+        }
+        
+        return hardcodedBranches;
+    }
+
+    public async configureBaseBranches() {
+        try {
+            const config = vscode.workspace.getConfiguration('milestone-manager');
+            const currentValue = config.get<string>('additionalBaseBranches', '');
+            
+            const newValue = await vscode.window.showInputBox({
+                prompt: 'Enter additional base branches that cannot be force pushed to (separated by semicolons)',
+                placeHolder: 'develop;staging;release',
+                value: currentValue,
+                title: 'Configure Protected Base Branches',
+                ignoreFocusOut: true
+            });
+
+            if (newValue !== undefined) {
+                // Try workspace settings first, fall back to global if it fails
+                try {
+                    await config.update('additionalBaseBranches', newValue, vscode.ConfigurationTarget.Workspace);
+                    const baseBranches = this.getBaseBranches();
+                    vscode.window.showInformationMessage(
+                        `Base branches updated (workspace). Protected branches: ${baseBranches.join(', ')}`
+                    );
+                } catch (workspaceError) {
+                    console.log('Failed to update workspace settings, trying global settings:', workspaceError);
+                    try {
+                        await config.update('additionalBaseBranches', newValue, vscode.ConfigurationTarget.Global);
+                        const baseBranches = this.getBaseBranches();
+                        vscode.window.showInformationMessage(
+                            `Base branches updated (global). Protected branches: ${baseBranches.join(', ')}`
+                        );
+                    } catch (globalError) {
+                        throw new Error(`Unable to save settings to workspace or global configuration: ${globalError}`);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error configuring base branches:', error);
+            if (error instanceof Error) {
+                vscode.window.showErrorMessage(`Failed to update base branches: ${error.message}`);
+            } else {
+                vscode.window.showErrorMessage('Failed to update base branches: Unknown error');
+            }
+        }
+    }
+
+    public async refresh() {
+        try {
+            console.log('Manual refresh triggered');
+            // Force refresh both status bar and webview
+            await this.updateStatusBar();
+            this.updateWebview();
+            vscode.window.showInformationMessage('Milestones refreshed');
+        } catch (error) {
+            console.error('Error during manual refresh:', error);
+            if (error instanceof Error) {
+                vscode.window.showErrorMessage(`Failed to refresh milestones: ${error.message}`);
+            } else {
+                vscode.window.showErrorMessage('Failed to refresh milestones: Unknown error');
             }
         }
     }
@@ -374,59 +501,243 @@ class MilestoneManager {
     public dispose() {
         this.cleanupBranchWatcher();
     }
+
+    public showMilestones() {
+        if (!this.webviewPanel) {
+            this.initializeMilestoneView();
+        } else {
+            this.webviewPanel.reveal();
+        }
+    }
+
+    private async updateWebview() {
+        if (!this.webviewPanel) {
+            return;
+        }
+
+        const config = vscode.workspace.getConfiguration('milestone-manager');
+        const additionalBranches = config.get<string>('additionalBaseBranches', '');
+        const baseBranches = this.getBaseBranches();
+        const milestones = await this.getMilestones();
+
+        this.webviewPanel.webview.html = this.getWebviewContent(additionalBranches, baseBranches, milestones);
+    }
+
+    private async updateBaseBranchesFromWebview(newValue: string) {
+        try {
+            const config = vscode.workspace.getConfiguration('milestone-manager');
+            
+            // Try workspace settings first, fall back to global if it fails
+            try {
+                await config.update('additionalBaseBranches', newValue, vscode.ConfigurationTarget.Workspace);
+                const baseBranches = this.getBaseBranches();
+                vscode.window.showInformationMessage(
+                    `Base branches updated (workspace). Protected branches: ${baseBranches.join(', ')}`
+                );
+            } catch (workspaceError) {
+                console.log('Failed to update workspace settings, trying global settings:', workspaceError);
+                try {
+                    await config.update('additionalBaseBranches', newValue, vscode.ConfigurationTarget.Global);
+                    const baseBranches = this.getBaseBranches();
+                    vscode.window.showInformationMessage(
+                        `Base branches updated (global). Protected branches: ${baseBranches.join(', ')}`
+                    );
+                } catch (globalError) {
+                    throw new Error(`Unable to save settings to workspace or global configuration: ${globalError}`);
+                }
+            }
+            
+            // Refresh the webview
+            this.updateWebview();
+        } catch (error) {
+            console.error('Error updating base branches from webview:', error);
+            if (error instanceof Error) {
+                vscode.window.showErrorMessage(`Failed to update base branches: ${error.message}`);
+            } else {
+                vscode.window.showErrorMessage('Failed to update base branches: Unknown error');
+            }
+        }
+    }
+
+    private getWebviewContent(additionalBranches: string, baseBranches: string[], milestones: Milestone[]): string {
+        return `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Milestone Manager</title>
+            <style>
+                body {
+                    font-family: var(--vscode-font-family);
+                    font-size: var(--vscode-font-size);
+                    color: var(--vscode-foreground);
+                    background-color: var(--vscode-editor-background);
+                    padding: 10px;
+                    margin: 0;
+                }
+                .settings-section {
+                    border-bottom: 1px solid var(--vscode-panel-border);
+                    padding-bottom: 15px;
+                    margin-bottom: 15px;
+                }
+                .settings-label {
+                    font-weight: bold;
+                    margin-bottom: 5px;
+                    display: block;
+                }
+                .settings-input {
+                    width: 100%;
+                    padding: 5px;
+                    border: 1px solid var(--vscode-input-border);
+                    background-color: var(--vscode-input-background);
+                    color: var(--vscode-input-foreground);
+                    border-radius: 3px;
+                    margin-bottom: 5px;
+                }
+                .settings-help {
+                    font-size: 0.9em;
+                    color: var(--vscode-descriptionForeground);
+                    margin-bottom: 5px;
+                }
+                .protected-branches {
+                    font-size: 0.9em;
+                    color: var(--vscode-textLink-foreground);
+                    margin-top: 5px;
+                }
+                .milestone-actions {
+                    margin-bottom: 10px;
+                }
+                .action-button {
+                    background-color: var(--vscode-button-background);
+                    color: var(--vscode-button-foreground);
+                    border: none;
+                    padding: 6px 12px;
+                    margin-right: 5px;
+                    border-radius: 3px;
+                    cursor: pointer;
+                    font-size: 12px;
+                }
+                .action-button:hover {
+                    background-color: var(--vscode-button-hoverBackground);
+                }
+                .milestone-list {
+                    list-style: none;
+                    padding: 0;
+                    margin: 0;
+                }
+                .milestone-item {
+                    padding: 8px;
+                    border: 1px solid var(--vscode-panel-border);
+                    margin-bottom: 2px;
+                    cursor: pointer;
+                    border-radius: 3px;
+                }
+                .milestone-item:hover {
+                    background-color: var(--vscode-list-hoverBackground);
+                }
+                .milestone-title {
+                    font-weight: bold;
+                    margin-bottom: 2px;
+                }
+                .milestone-details {
+                    font-size: 0.9em;
+                    color: var(--vscode-descriptionForeground);
+                }
+                .no-milestones {
+                    text-align: center;
+                    padding: 20px;
+                    color: var(--vscode-descriptionForeground);
+                    font-style: italic;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="settings-section">
+                <label class="settings-label">Protected Base Branches</label>
+                <input type="text" id="baseBranchesInput" class="settings-input" 
+                       value="${additionalBranches}" 
+                       placeholder="develop;staging;release"
+                       title="Enter additional base branches separated by semicolons">
+                <div class="settings-help">
+                    Additional branches that cannot be force pushed to (separated by semicolons)
+                </div>
+                <div class="protected-branches">
+                    Currently protected: ${baseBranches.join(', ')}
+                </div>
+            </div>
+
+            <div class="milestone-actions">
+                <button class="action-button" onclick="createMilestone()">➕ Create Milestone</button>
+                <button class="action-button" onclick="refresh()">🔄 Refresh</button>
+            </div>
+
+            <div id="milestonesList">
+                ${milestones.length === 0 ? 
+                    '<div class="no-milestones">No milestones yet</div>' :
+                    `<ul class="milestone-list">
+                        ${milestones.map((milestone, index) => `
+                            <li class="milestone-item" onclick="revertToMilestone('${milestone.hash}')">
+                                <div class="milestone-title">${milestone.message}</div>
+                                <div class="milestone-details">
+                                    ${milestone.date} ${milestone.time} (${milestone.hash.substring(0, 7)})${index === 0 ? ' (Latest)' : ''}
+                                </div>
+                            </li>
+                        `).join('')}
+                    </ul>`
+                }
+            </div>
+
+            <script>
+                const vscode = acquireVsCodeApi();
+
+                let debounceTimer;
+                document.getElementById('baseBranchesInput').addEventListener('input', function(e) {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => {
+                        vscode.postMessage({
+                            command: 'updateBaseBranches',
+                            value: e.target.value
+                        });
+                    }, 500);
+                });
+
+                function createMilestone() {
+                    vscode.postMessage({ command: 'createMilestone' });
+                }
+
+                function refresh() {
+                    vscode.postMessage({ command: 'refresh' });
+                }
+
+                function revertToMilestone(hash) {
+                    vscode.postMessage({ 
+                        command: 'revertToMilestone',
+                        hash: hash 
+                    });
+                }
+            </script>
+        </body>
+        </html>
+        `;
+    }
 }
 
 class MilestoneTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
-    readonly onDidChangeTreeData: vscode.Event<void> = this._onDidChangeTreeData.event;
-    private cachedMilestones: vscode.TreeItem[] | null = null;
-
-    constructor(private milestoneManager: MilestoneManager) {}
-
     getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
         return element;
     }
 
-    async getChildren(): Promise<vscode.TreeItem[]> {
-        try {
-            if (this.cachedMilestones) {
-                return this.cachedMilestones;
-            }
-
-            const milestones = await this.milestoneManager.getMilestones();
-            if (milestones.length === 0) {
-                return [new vscode.TreeItem('No milestones yet')];
-            }
-
-            this.cachedMilestones = milestones.map((milestone, index) => {
-                const item = new vscode.TreeItem(milestone.message);
-                // Format: "YYYY-MM-DD HH:MM (abbreviated-hash)"
-                const shortHash = milestone.hash.substring(0, 7);
-                const label = index === 0 ? ' (Latest)' : '';
-                item.description = `${milestone.date} ${milestone.time} (${shortHash})${label}`;
-                item.tooltip = 
-                    `${milestone.message}\n` +
-                    `Created: ${milestone.date} ${milestone.time}\n` +
-                    `Commit: ${milestone.hash}\n\n` +
-                    `Click to revert to this milestone`;
-                item.command = {
-                    command: 'milestone-manager.revertToMilestone',
-                    title: 'Revert to Milestone',
-                    arguments: [milestone.hash]
-                };
-                return item;
-            });
-
-            return this.cachedMilestones;
-        } catch (error) {
-            console.error('Error getting milestones:', error);
-            return [new vscode.TreeItem('Error loading milestones')];
-        }
-    }
-
-    refresh(): void {
-        this.cachedMilestones = null;
-        this._onDidChangeTreeData.fire();
+    getChildren(): vscode.TreeItem[] {
+        const openItem = new vscode.TreeItem('Open Milestone Manager');
+        openItem.command = {
+            command: 'milestone-manager.showMilestones',
+            title: 'Open Milestone Manager'
+        };
+        openItem.iconPath = new vscode.ThemeIcon('milestone');
+        openItem.tooltip = 'Click to open the milestone management interface';
+        
+        return [openItem];
     }
 }
 
@@ -444,6 +755,24 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('milestone-manager.revertToMilestone', (hash: string) => {
             milestoneManagerInstance?.revertToMilestone(hash);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('milestone-manager.configureBaseBranches', () => {
+            milestoneManagerInstance?.configureBaseBranches();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('milestone-manager.refresh', () => {
+            milestoneManagerInstance?.refresh();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('milestone-manager.showMilestones', () => {
+            milestoneManagerInstance?.showMilestones();
         })
     );
 }

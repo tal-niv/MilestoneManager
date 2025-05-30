@@ -35,6 +35,21 @@
       {
         "command": "milestone-manager.revertToMilestone",
         "title": "Revert to Milestone"
+      },
+      {
+        "command": "milestone-manager.configureBaseBranches",
+        "title": "Configure Base Branches",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "milestone-manager.refresh",
+        "title": "Refresh Milestones",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "milestone-manager.showMilestones",
+        "title": "Show Milestones",
+        "icon": "$(milestone)"
       }
     ],
     "viewsContainers": {
@@ -49,7 +64,7 @@
     "views": {
       "milestone-manager": [
         {
-          "id": "milestoneList",
+          "id": "milestoneView",
           "name": "Milestones"
         }
       ]
@@ -57,8 +72,8 @@
     "menus": {
       "view/title": [
         {
-          "command": "milestone-manager.createMilestone",
-          "when": "view == milestoneList",
+          "command": "milestone-manager.showMilestones",
+          "when": "view == milestoneView",
           "group": "navigation"
         }
       ]
@@ -73,7 +88,17 @@
           }
         ]
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Milestone Manager",
+      "properties": {
+        "milestone-manager.additionalBaseBranches": {
+          "type": "string",
+          "default": "",
+          "description": "Additional base branches that cannot be force pushed to (separated by semicolons). Example: develop;staging;release"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
