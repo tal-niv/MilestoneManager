@@ -2,7 +2,7 @@
   "name": "milestone-manager",
   "displayName": "Milestone Manager",
   "description": "A simple way to create and manage code milestones through git commits",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "milestone-manager-dev",
   "license": "MIT",
   "repository": {

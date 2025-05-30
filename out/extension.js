@@ -4,11 +4,15 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = require("vscode");
 const child_process = require("child_process");
+const fs = require("fs");
+const path = require("path");
 const util_1 = require("util");
 const execAsync = (0, util_1.promisify)(child_process.exec);
 class MilestoneManager {
     constructor(context) {
         this.context = context;
+        this.gitHeadWatcher = null;
+        this.currentBranch = null;
         this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
         this.statusBarItem.command = 'milestone-manager.createMilestone';
         this.statusBarItem.text = '$(milestone)'; // Using milestone flag icon
@@ -16,10 +20,12 @@ class MilestoneManager {
         this.treeDataProvider = new MilestoneTreeDataProvider(this);
         this.initializeMilestoneList();
         this.updateStatusBar();
+        this.setupBranchWatcher();
         // Register workspace folder change event
         this.context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
             this.updateStatusBar();
             this.treeDataProvider.refresh();
+            this.setupBranchWatcher();
         }));
     }
     initializeMilestoneList() {
@@ -220,14 +226,10 @@ class MilestoneManager {
         }
     }
     async getCurrentMilestone() {
-        const workspacePath = this.getWorkspacePath();
         try {
-            // Get current branch name
-            const { stdout: branchName } = await execAsync('git symbolic-ref --short HEAD', { cwd: workspacePath });
-            const currentBranch = branchName.trim();
-            const { stdout: currentCommit } = await execAsync('git rev-parse HEAD', { cwd: workspacePath });
-            const { stdout: milestoneInfo } = await execAsync(`git log ${currentCommit.trim()} --grep="^Milestone:" -n 1 --pretty=format:"%s"`, { cwd: workspacePath });
-            return milestoneInfo.trim() || null;
+            const milestones = await this.getMilestones();
+            // Return the most recent milestone (first in the array) or null if none exist
+            return milestones.length > 0 ? milestones[0].message : null;
         }
         catch (error) {
             console.error('Error getting current milestone:', error);
@@ -245,6 +247,90 @@ class MilestoneManager {
             console.error('Error checking for milestones:', error);
             return false;
         }
+    }
+    setupBranchWatcher() {
+        // Clean up existing watcher
+        this.cleanupBranchWatcher();
+        try {
+            const workspacePath = this.getWorkspacePath();
+            const gitHeadPath = path.join(workspacePath, '.git', 'HEAD');
+            console.log('Setting up branch watcher for:', gitHeadPath);
+            // Check if .git/HEAD exists
+            if (!fs.existsSync(gitHeadPath)) {
+                console.log('Git HEAD file does not exist:', gitHeadPath);
+                return;
+            }
+            // Get initial branch name
+            this.updateCurrentBranch();
+            // Watch .git/HEAD for changes
+            this.gitHeadWatcher = fs.watchFile(gitHeadPath, { interval: 1000 }, async (curr, prev) => {
+                console.log('Git HEAD file changed - curr:', curr.mtime, 'prev:', prev.mtime);
+                await this.handleBranchChange();
+            });
+            console.log('Branch watcher setup complete');
+        }
+        catch (error) {
+            console.error('Error setting up branch watcher:', error);
+        }
+    }
+    cleanupBranchWatcher() {
+        if (this.gitHeadWatcher) {
+            try {
+                const workspacePath = this.getWorkspacePath();
+                const gitHeadPath = path.join(workspacePath, '.git', 'HEAD');
+                fs.unwatchFile(gitHeadPath);
+                this.gitHeadWatcher = null;
+            }
+            catch (error) {
+                // Ignore cleanup errors
+                this.gitHeadWatcher = null;
+            }
+        }
+    }
+    async updateCurrentBranch() {
+        try {
+            const workspacePath = this.getWorkspacePath();
+            const { stdout: branchName } = await execAsync('git symbolic-ref --short HEAD', { cwd: workspacePath });
+            this.currentBranch = branchName.trim();
+            console.log('Initial current branch set to:', this.currentBranch);
+        }
+        catch (error) {
+            this.currentBranch = null;
+            console.log('Could not get initial branch, set to null:', error);
+        }
+    }
+    async handleBranchChange() {
+        try {
+            const workspacePath = this.getWorkspacePath();
+            const { stdout: branchName } = await execAsync('git symbolic-ref --short HEAD', { cwd: workspacePath });
+            const newBranch = branchName.trim();
+            console.log('handleBranchChange - current:', this.currentBranch, 'new:', newBranch);
+            // Only refresh if branch actually changed
+            if (this.currentBranch !== newBranch) {
+                console.log('Branch changed from', this.currentBranch, 'to', newBranch, '- refreshing milestone data');
+                this.currentBranch = newBranch;
+                // Silently refresh milestone data
+                this.updateStatusBar();
+                this.treeDataProvider.refresh();
+            }
+            else {
+                console.log('Branch unchanged, no refresh needed');
+            }
+        }
+        catch (error) {
+            console.log('handleBranchChange error (possibly detached HEAD):', error);
+            // Branch might be in detached HEAD state or other git states
+            // Just update current branch to null and refresh
+            if (this.currentBranch !== null) {
+                console.log('Setting current branch to null and refreshing');
+                this.currentBranch = null;
+                this.updateStatusBar();
+                this.treeDataProvider.refresh();
+            }
+        }
+    }
+    dispose() {
+        this.cleanupBranchWatcher();
     }
 }
 class MilestoneTreeDataProvider {
@@ -296,14 +382,20 @@ class MilestoneTreeDataProvider {
         this._onDidChangeTreeData.fire();
     }
 }
+let milestoneManagerInstance = null;
 function activate(context) {
-    const milestoneManager = new MilestoneManager(context);
+    milestoneManagerInstance = new MilestoneManager(context);
     context.subscriptions.push(vscode.commands.registerCommand('milestone-manager.createMilestone', () => {
-        milestoneManager.createMilestone();
+        milestoneManagerInstance?.createMilestone();
     }));
     context.subscriptions.push(vscode.commands.registerCommand('milestone-manager.revertToMilestone', (hash) => {
-        milestoneManager.revertToMilestone(hash);
+        milestoneManagerInstance?.revertToMilestone(hash);
     }));
 }
-function deactivate() { }
+function deactivate() {
+    if (milestoneManagerInstance) {
+        milestoneManagerInstance.dispose();
+        milestoneManagerInstance = null;
+    }
+}
 //# sourceMappingURL=extension.js.map
