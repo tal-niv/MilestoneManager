@@ -120,7 +120,7 @@ class MilestoneManager {
                 await execAsync('git reset -- "appsettings.*json"', { cwd: workspacePath });
 
                 // Create milestone commit
-                await execAsync(`git commit --allow-empty -m "MSVE___BR___${branchName.trim()}___MS___${note || 'No note provided'}"`, { cwd: workspacePath });
+                await execAsync(`git commit --allow-empty -m "Milestone: ${note || 'No note provided'}"`, { cwd: workspacePath });
 
                 // Try to push
                 try {
@@ -223,14 +223,10 @@ class MilestoneManager {
         try {
             const workspacePath = this.getWorkspacePath();
             
-            // Get current branch name
-            const { stdout: branchName } = await execAsync('git symbolic-ref --short HEAD', { cwd: workspacePath });
-            const currentBranch = branchName.trim();
-            
-            // Get all commits that match our milestone format
-            // Add %ai for ISO 8601-like format with date and time
+            // Get all milestone commits that are on the current branch but not on origin/HEAD
+            // This shows only commits unique to the current branch
             const { stdout } = await execAsync(
-                'git log --pretty=format:"%H|||%s|||%ad|||%ai" --date=short --grep="MSVE___BR___" -n 100', 
+                `git log origin/HEAD.. --pretty=format:"%H|||%s|||%ad|||%ai" --date=short --grep="^Milestone:" -n 50`, 
                 { cwd: workspacePath }
             );
 
@@ -241,31 +237,16 @@ class MilestoneManager {
             return stdout
                 .split('\n')
                 .map(line => {
-                    const [hash, fullMessage, date, datetime] = line.split('|||');
-                    // Parse the message to extract branch and milestone text
-                    const messageParts = fullMessage.split('___');
-                    if (messageParts.length < 5) {
-                        return null; // Invalid format
-                    }
-                    
-                    const branch = messageParts[2];
-                    const milestoneText = messageParts[4];
-                    
-                    // Skip if not for current branch
-                    if (branch !== currentBranch) {
-                        return null;
-                    }
-                    
+                    const [hash, message, date, datetime] = line.split('|||');
                     // Extract time from datetime (format: YYYY-MM-DD HH:MM:SS +TIMEZONE)
                     const time = datetime.split(' ')[1];
                     return { 
                         hash, 
-                        message: `Milestone: ${milestoneText}`, 
+                        message, 
                         date,
                         time
                     };
-                })
-                .filter(item => item !== null) as Milestone[];
+                });
         } catch (error) {
             console.error('Error getting milestones:', error);
             return [];
@@ -281,30 +262,11 @@ class MilestoneManager {
             
             const { stdout: currentCommit } = await execAsync('git rev-parse HEAD', { cwd: workspacePath });
             const { stdout: milestoneInfo } = await execAsync(
-                `git log ${currentCommit.trim()} --grep="MSVE___BR___" -n 10 --pretty=format:"%s"`,
+                `git log ${currentCommit.trim()} --grep="^Milestone:" -n 1 --pretty=format:"%s"`,
                 { cwd: workspacePath }
             );
             
-            if (!milestoneInfo.trim()) {
-                return null;
-            }
-            
-            // Process each milestone until we find one for the current branch
-            for (const msg of milestoneInfo.trim().split('\n')) {
-                const parts = msg.split('___');
-                if (parts.length < 5) {
-                    continue; // Invalid format
-                }
-                
-                const branch = parts[2];
-                const milestone = parts[4];
-                
-                if (branch === currentBranch) {
-                    return `Milestone: ${milestone}`;
-                }
-            }
-            
-            return null;
+            return milestoneInfo.trim() || null;
         } catch (error) {
             console.error('Error getting current milestone:', error);
             return null;
@@ -314,25 +276,9 @@ class MilestoneManager {
     private async hasMilestones(): Promise<boolean> {
         const workspacePath = this.getWorkspacePath();
         try {
-            // Get current branch name
-            const { stdout: branchName } = await execAsync('git symbolic-ref --short HEAD', { cwd: workspacePath });
-            const currentBranch = branchName.trim();
-            
-            // Get all commits that match our milestone format
-            const { stdout } = await execAsync('git log --grep="MSVE___BR___" -n 50 --pretty=format:"%s"', { cwd: workspacePath });
-            
-            if (!stdout.trim()) {
-                return false;
-            }
-            
-            // Check if any milestone exists for the current branch
-            return stdout.split('\n').some(msg => {
-                const parts = msg.split('___');
-                if (parts.length < 5) {
-                    return false;
-                }
-                return parts[2] === currentBranch;
-            });
+            // Check for milestone commits that are on the current branch but not on origin/HEAD
+            const { stdout } = await execAsync(`git log origin/HEAD.. --grep="^Milestone:" -n 1`, { cwd: workspacePath });
+            return !!stdout.trim();
         } catch (error) {
             console.error('Error checking for milestones:', error);
             return false;

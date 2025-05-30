@@ -96,6 +96,12 @@ None at the moment.
 
 ## Release Notes
 
+### 1.0.2
+
+- Improved implementation: Branch isolation now uses git's native branch filtering instead of commit message encoding
+- Cleaner commit messages: Milestone commits now use simple "Milestone: [description]" format
+- Enhanced performance: More efficient milestone filtering using git log with branch specification
+
 ### 1.0.1
 
 - Fixed bug: Milestones are now isolated to specific branches
