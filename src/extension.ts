@@ -691,15 +691,26 @@ class MilestoneManager {
             <script>
                 const vscode = acquireVsCodeApi();
 
-                let debounceTimer;
-                document.getElementById('baseBranchesInput').addEventListener('input', function(e) {
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(() => {
+                const baseBranchesInput = document.getElementById('baseBranchesInput');
+                
+                // Save base branches when Enter is pressed
+                baseBranchesInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        console.log('Enter pressed, saving base branches:', e.target.value);
                         vscode.postMessage({
                             command: 'updateBaseBranches',
                             value: e.target.value
                         });
-                    }, 500);
+                    }
+                });
+
+                // Save base branches when input loses focus
+                baseBranchesInput.addEventListener('blur', function(e) {
+                    console.log('Input lost focus, saving base branches:', e.target.value);
+                    vscode.postMessage({
+                        command: 'updateBaseBranches',
+                        value: e.target.value
+                    });
                 });
 
                 function createMilestone() {
