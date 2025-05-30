@@ -104,6 +104,8 @@ class MilestoneManager {
             // Get the ignored files pattern
             const pattern = this.getIgnoredFilesPattern();
             
+            console.log(`[DEBUG] Filtering with pattern: "${pattern}"`);
+            
             if (!pattern.trim()) {
                 console.log('No ignored files pattern configured, skipping file filtering');
                 return;
@@ -111,19 +113,29 @@ class MilestoneManager {
 
             // Create regex from pattern
             const regex = new RegExp(pattern);
+            console.log(`[DEBUG] Created regex:`, regex);
 
             // Get list of staged files
             const { stdout: stagedFiles } = await execAsync('git diff --cached --name-only', { cwd: workspacePath });
+            
+            console.log(`[DEBUG] Staged files output: "${stagedFiles}"`);
             
             if (!stagedFiles.trim()) {
                 console.log('No staged files to filter');
                 return;
             }
 
+            const fileList = stagedFiles.split('\n').map(f => f.trim()).filter(f => f);
+            console.log(`[DEBUG] File list to check:`, fileList);
+
             // Filter files that match the ignore pattern
-            const filesToRemove = stagedFiles
-                .split('\n')
-                .filter(file => file.trim() && regex.test(file.trim()));
+            const filesToRemove = fileList.filter(file => {
+                const matches = regex.test(file);
+                console.log(`[DEBUG] File "${file}" matches pattern: ${matches}`);
+                return matches;
+            });
+
+            console.log(`[DEBUG] Files to remove:`, filesToRemove);
 
             // Remove matching files from staging
             for (const file of filesToRemove) {
@@ -135,6 +147,8 @@ class MilestoneManager {
 
             if (filesToRemove.length > 0) {
                 console.log(`Filtered ${filesToRemove.length} ignored files from milestone commit`);
+            } else {
+                console.log('[DEBUG] No files were filtered out');
             }
         } catch (error) {
             console.error('Error filtering ignored files:', error);
