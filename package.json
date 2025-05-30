@@ -42,6 +42,11 @@
         "icon": "$(settings-gear)"
       },
       {
+        "command": "milestone-manager.configureIgnoredFiles",
+        "title": "Configure Ignored Files",
+        "icon": "$(file-symlink-file)"
+      },
+      {
         "command": "milestone-manager.refresh",
         "title": "Refresh Milestones",
         "icon": "$(refresh)"
@@ -96,6 +101,11 @@
           "type": "string",
           "default": "",
           "description": "Additional base branches that cannot be force pushed to (separated by semicolons). Example: develop;staging;release"
+        },
+        "milestone-manager.ignoredFilesPattern": {
+          "type": "string",
+          "default": "\\.(log|tmp)$|appsettings\\..*\\.json$",
+          "description": "Regex pattern for files to exclude from milestone commits. Example: \\.(log|tmp)$|secrets\\.json$"
         }
       }
     }

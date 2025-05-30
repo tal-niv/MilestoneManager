@@ -1,3 +1,4 @@
 {
-    "milestone-manager.additionalBaseBranches": "develop;"
+    "milestone-manager.additionalBaseBranches": "develop;",
+    "milestone-manager.ignoredFilesPattern": "\\.(log|tmp)$|appsettings\\..*\\.json$"
 }
