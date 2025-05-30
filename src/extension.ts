@@ -99,6 +99,49 @@ class MilestoneManager {
         }
     }
 
+    private async filterIgnoredFiles(workspacePath: string): Promise<void> {
+        try {
+            // Get the ignored files pattern
+            const pattern = this.getIgnoredFilesPattern();
+            
+            if (!pattern.trim()) {
+                console.log('No ignored files pattern configured, skipping file filtering');
+                return;
+            }
+
+            // Create regex from pattern
+            const regex = new RegExp(pattern);
+
+            // Get list of staged files
+            const { stdout: stagedFiles } = await execAsync('git diff --cached --name-only', { cwd: workspacePath });
+            
+            if (!stagedFiles.trim()) {
+                console.log('No staged files to filter');
+                return;
+            }
+
+            // Filter files that match the ignore pattern
+            const filesToRemove = stagedFiles
+                .split('\n')
+                .filter(file => file.trim() && regex.test(file.trim()));
+
+            // Remove matching files from staging
+            for (const file of filesToRemove) {
+                if (file.trim()) {
+                    console.log(`Removing ignored file from staging: ${file}`);
+                    await execAsync(`git reset -- "${file}"`, { cwd: workspacePath });
+                }
+            }
+
+            if (filesToRemove.length > 0) {
+                console.log(`Filtered ${filesToRemove.length} ignored files from milestone commit`);
+            }
+        } catch (error) {
+            console.error('Error filtering ignored files:', error);
+            // Don't throw - we don't want file filtering errors to break milestone creation
+        }
+    }
+
     public async createMilestone() {
         try {
             const workspacePath = this.getWorkspacePath();
@@ -120,12 +163,10 @@ class MilestoneManager {
             const { stdout: branchName } = await execAsync('git symbolic-ref --short HEAD', { cwd: workspacePath });
 
             try {
-                // Add all new files to git except .log and appsettings.*json files
+                // Add all files and then filter based on configured ignored files pattern
                 await execAsync('git add .', { cwd: workspacePath });
-                // Remove any .log files that might have been added
-                await execAsync('git reset -- "*.log"', { cwd: workspacePath });
-                // Remove any appsettings.*json files that might have been added
-                await execAsync('git reset -- "appsettings.*json"', { cwd: workspacePath });
+                // Remove files matching the ignored files pattern
+                await this.filterIgnoredFiles(workspacePath);
 
                 // Create milestone commit
                 await execAsync(`git commit --allow-empty -m "Milestone: ${note || 'No note provided'}"`, { cwd: workspacePath });
@@ -402,6 +443,19 @@ class MilestoneManager {
         return hardcodedBranches;
     }
 
+    public getIgnoredFilesPattern(): string {
+        const config = vscode.workspace.getConfiguration('milestone-manager');
+        const pattern = config.get<string>('ignoredFilesPattern', '\\.(log|tmp)$|appsettings\\..*\\.json$');
+        
+        console.log('Reading ignored files pattern config:', {
+            workspace: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || 'none',
+            pattern,
+            configInspection: config.inspect('ignoredFilesPattern')
+        });
+        
+        return pattern;
+    }
+
     public async configureBaseBranches() {
         try {
             const config = vscode.workspace.getConfiguration('milestone-manager');
@@ -445,6 +499,59 @@ class MilestoneManager {
                 vscode.window.showErrorMessage(`Failed to update base branches: ${error.message}`);
             } else {
                 vscode.window.showErrorMessage('Failed to update base branches: Unknown error');
+            }
+        }
+    }
+
+    public async configureIgnoredFiles() {
+        try {
+            const config = vscode.workspace.getConfiguration('milestone-manager');
+            const currentValue = config.get<string>('ignoredFilesPattern', '\\.(log|tmp)$|appsettings\\..*\\.json$');
+            
+            const newValue = await vscode.window.showInputBox({
+                prompt: 'Enter regex pattern for files to exclude from milestone commits',
+                placeHolder: '\\.(log|tmp)$|secrets\\.json$|node_modules/.*',
+                value: currentValue,
+                title: 'Configure Ignored Files Pattern',
+                ignoreFocusOut: true,
+                validateInput: (input) => {
+                    try {
+                        new RegExp(input);
+                        return null; // Valid regex
+                    } catch (error) {
+                        return 'Invalid regex pattern';
+                    }
+                }
+            });
+
+            if (newValue !== undefined) {
+                // Try workspace settings first, fall back to global if it fails
+                try {
+                    await config.update('ignoredFilesPattern', newValue, vscode.ConfigurationTarget.Workspace);
+                    vscode.window.showInformationMessage(
+                        `Ignored files pattern updated (workspace). Pattern: ${newValue}`
+                    );
+                } catch (workspaceError) {
+                    console.log('Failed to update workspace settings, trying global settings:', workspaceError);
+                    try {
+                        await config.update('ignoredFilesPattern', newValue, vscode.ConfigurationTarget.Global);
+                        vscode.window.showInformationMessage(
+                            `Ignored files pattern updated (global). Pattern: ${newValue}`
+                        );
+                    } catch (globalError) {
+                        throw new Error(`Unable to save settings to workspace or global configuration: ${globalError}`);
+                    }
+                }
+                
+                // Refresh the tree view
+                this.refreshTreeView();
+            }
+        } catch (error) {
+            console.error('Error configuring ignored files:', error);
+            if (error instanceof Error) {
+                vscode.window.showErrorMessage(`Failed to update ignored files pattern: ${error.message}`);
+            } else {
+                vscode.window.showErrorMessage('Failed to update ignored files pattern: Unknown error');
             }
         }
     }
@@ -572,6 +679,31 @@ class MilestoneTreeDataProvider implements vscode.TreeDataProvider<MilestoneTree
         currentItem.tooltip = 'Currently protected base branches';
         items.push(currentItem);
 
+        // Configure ignored files item
+        const ignoredFilesPattern = this.milestoneManager.getIgnoredFilesPattern();
+        const configIgnoreItem = new MilestoneTreeItem(
+            'Configure Ignored Files',
+            vscode.TreeItemCollapsibleState.None,
+            'configure-ignored-files'
+        );
+        configIgnoreItem.command = {
+            command: 'milestone-manager.configureIgnoredFiles',
+            title: 'Configure Ignored Files'
+        };
+        configIgnoreItem.iconPath = new vscode.ThemeIcon('file-symlink-file');
+        configIgnoreItem.tooltip = `Current pattern: ${ignoredFilesPattern}`;
+        items.push(configIgnoreItem);
+
+        // Show current ignored files pattern
+        const currentIgnoreItem = new MilestoneTreeItem(
+            `Pattern: ${ignoredFilesPattern}`,
+            vscode.TreeItemCollapsibleState.None,
+            'current-ignored-files'
+        );
+        currentIgnoreItem.iconPath = new vscode.ThemeIcon('regex');
+        currentIgnoreItem.tooltip = 'Current ignored files regex pattern';
+        items.push(currentIgnoreItem);
+
         return items;
     }
 
@@ -671,6 +803,12 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('milestone-manager.configureBaseBranches', () => {
             milestoneManagerInstance?.configureBaseBranches();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('milestone-manager.configureIgnoredFiles', () => {
+            milestoneManagerInstance?.configureIgnoredFiles();
         })
     );
 
