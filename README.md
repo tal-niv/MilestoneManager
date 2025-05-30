@@ -12,6 +12,7 @@ A VS Code extension that helps you create and manage code milestones through git
 - **Git Integration**: Automatic git commit and tracking for each milestone
 - **Revert Capability**: One-click reversion to any previous milestone
 - **Visual Feedback**: Clear visual indicators for current and available milestones
+- **Automatic Branch Detection**: Seamlessly refreshes milestone list when switching branches
 
 ## Installation
 
@@ -60,18 +61,25 @@ A VS Code extension that helps you create and manage code milestones through git
 3. Confirm the reversion
 4. Your code will be restored to the exact state of that milestone
 
+### Automatic Branch Switching
+The extension automatically detects when you switch branches and refreshes the milestone list accordingly:
+
+- **Seamless Detection**: Works with any method of branch switching:
+  - VS Code Git extension
+  - Command line
+  - External Git tools
+- **Silent Updates**: No notifications or interruptions - the milestone list simply updates
+- **Instant Refresh**: Changes are detected immediately when you switch branches
+- **Branch-Specific Milestones**: Each branch maintains its own set of milestones
+
+This ensures you always see the correct milestones for your current branch without any manual intervention.
+
 ## Extension Commands
 
 The extension provides the following commands:
 
 - `milestone-manager.createMilestone`: Create a new milestone
 - `milestone-manager.revertToMilestone`: Revert to a selected milestone
-
-## Extension Settings
-
-This extension contributes the following settings:
-
-* `milestone-manager.showStatusBar`: Enable/disable the milestone status in the status bar
 
 ## Best Practices
 
@@ -95,6 +103,13 @@ None at the moment.
 ⚠️ **Git Operations Warning**: This extension performs force push operations and branch alterations. Make sure you understand the implications and have the necessary permissions.
 
 ## Release Notes
+
+### 1.0.3
+
+- **New Feature**: Automatic branch switching detection
+- **Enhanced User Experience**: Milestone list automatically refreshes when switching branches using any method (CLI, VS Code Git extension, external tools)
+- **Silent Operation**: Branch detection works seamlessly in the background without user intervention
+- **Improved Performance**: Efficient file system watcher monitors git branch changes
 
 ### 1.0.2
 
