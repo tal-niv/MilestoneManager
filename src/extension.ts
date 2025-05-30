@@ -223,14 +223,10 @@ class MilestoneManager {
         try {
             const workspacePath = this.getWorkspacePath();
             
-            // Get current branch name
-            const { stdout: branchName } = await execAsync('git symbolic-ref --short HEAD', { cwd: workspacePath });
-            const currentBranch = branchName.trim();
-            
-            // Get all milestone commits from the current branch only, excluding merged commits from other branches
-            // Using --first-parent to only follow the first parent of merge commits, ensuring we only see commits made directly on this branch
+            // Get all milestone commits that are on the current branch but not on origin/HEAD
+            // This shows only commits unique to the current branch
             const { stdout } = await execAsync(
-                `git log ${currentBranch} --first-parent --pretty=format:"%H|||%s|||%ad|||%ai" --date=short --grep="^Milestone:" -n 50`, 
+                `git log origin/HEAD.. --pretty=format:"%H|||%s|||%ad|||%ai" --date=short --grep="^Milestone:" -n 50`, 
                 { cwd: workspacePath }
             );
 
@@ -280,12 +276,8 @@ class MilestoneManager {
     private async hasMilestones(): Promise<boolean> {
         const workspacePath = this.getWorkspacePath();
         try {
-            // Get current branch name
-            const { stdout: branchName } = await execAsync('git symbolic-ref --short HEAD', { cwd: workspacePath });
-            const currentBranch = branchName.trim();
-            
-            // Check for milestone commits on the current branch, excluding merged commits from other branches
-            const { stdout } = await execAsync(`git log ${currentBranch} --first-parent --grep="^Milestone:" -n 1`, { cwd: workspacePath });
+            // Check for milestone commits that are on the current branch but not on origin/HEAD
+            const { stdout } = await execAsync(`git log origin/HEAD.. --grep="^Milestone:" -n 1`, { cwd: workspacePath });
             return !!stdout.trim();
         } catch (error) {
             console.error('Error checking for milestones:', error);
