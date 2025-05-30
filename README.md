@@ -13,6 +13,9 @@ A VS Code extension that helps you create and manage code milestones through git
 - **Revert Capability**: One-click reversion to any previous milestone
 - **Visual Feedback**: Clear visual indicators for current and available milestones
 - **Automatic Branch Detection**: Seamlessly refreshes milestone list when switching branches
+- **Configurable Base Branches**: Customize which branches are protected from force push operations
+- **Manual Refresh**: Force refresh milestone data with one-click refresh button
+- **Integrated Interface**: All-in-one webview with settings textbox and milestone management
 
 ## Installation
 
@@ -48,12 +51,15 @@ A VS Code extension that helps you create and manage code milestones through git
 
 ### Viewing Milestones
 1. Open the Milestone Manager sidebar (click the milestone flag icon)
-2. Browse through all your created milestones
+2. View the integrated interface with:
+   - **Protected Base Branches**: Textbox at the top for configuring additional protected branches
+   - **Action Buttons**: Create Milestone and Refresh buttons
+   - **Milestone List**: All your created milestones with details
 3. Each milestone shows:
    - Milestone name
-   - Creation date
-   - Description (if provided)
-   - Associated git commit
+   - Creation date and time
+   - Associated git commit hash
+   - Latest indicator for the most recent milestone
 
 ### Reverting to a Milestone
 1. Find the desired milestone in the Milestones view
@@ -74,12 +80,32 @@ The extension automatically detects when you switch branches and refreshes the m
 
 This ensures you always see the correct milestones for your current branch without any manual intervention.
 
+### Configuring Base Branches
+You can configure additional base branches that are protected from force push operations:
+
+1. **Integrated Interface**: Use the textbox at the top of the Milestone Manager panel
+2. **Live Updates**: Changes are saved automatically as you type (with 500ms delay)
+3. **Format**: Enter branch names separated by semicolons: `develop;staging;release`
+4. **Real-time Feedback**: See currently protected branches displayed below the textbox
+5. **Default Protection**: `master` and `main` are always protected by default
+
+**Protected branches cannot be used for milestone reversion** as they require force push operations that could disrupt team workflows.
+
 ## Extension Commands
 
 The extension provides the following commands:
 
 - `milestone-manager.createMilestone`: Create a new milestone
 - `milestone-manager.revertToMilestone`: Revert to a selected milestone
+- `milestone-manager.configureBaseBranches`: Configure additional protected base branches (legacy - use integrated textbox instead)
+- `milestone-manager.refresh`: Manually refresh milestone list and status bar
+- `milestone-manager.showMilestones`: Show the milestone manager interface
+
+## Extension Settings
+
+This extension contributes the following settings:
+
+* `milestone-manager.additionalBaseBranches`: Additional base branches that cannot be force pushed to (separated by semicolons). Example: develop;staging;release
 
 ## Best Practices
 
@@ -110,26 +136,32 @@ None at the moment.
 - **Enhanced User Experience**: Milestone list automatically refreshes when switching branches using any method (CLI, VS Code Git extension, external tools)
 - **Silent Operation**: Branch detection works seamlessly in the background without user intervention
 - **Improved Performance**: Efficient file system watcher monitors git branch changes
+- **Configurable Base Branches**: Users can now configure additional protected branches beyond master/main
+- **Enhanced Branch Protection**: Improved error messages show all protected branches when force push is blocked
+- **Manual Refresh**: Added refresh button to manually update milestone data when needed
+- **Integrated Interface**: New webview-based interface with settings textbox above milestone list
+- **Real-time Configuration**: Base branches can be configured directly in the main interface with live updates
 
 ### 1.0.2
 
-- Improved implementation: Branch isolation now uses git's native branch filtering instead of commit message encoding
-- Cleaner commit messages: Milestone commits now use simple "Milestone: [description]" format
-- Enhanced performance: More efficient milestone filtering using git log with branch specification
+- **Improved Implementation**: Branch isolation now uses git's native branch filtering instead of commit message encoding
+- **Cleaner Commit Messages**: Milestone commits now use simple "Milestone: [description]" format
+- **Enhanced Performance**: More efficient milestone filtering using git log with branch specification
 
 ### 1.0.1
 
-- Fixed bug: Milestones are now isolated to specific branches
-- Improved milestone tracking with branch-specific commit messages
-- Enhanced milestone display in the milestones panel
+- **Bug Fix**: Milestones are now isolated to specific branches
+- **Improved Tracking**: Enhanced milestone tracking with branch-specific commit messages
+- **Enhanced Display**: Improved milestone display in the milestones panel
 
 ### 1.0.0
 
-Initial release of Milestone Manager with core features:
-- Milestone creation and management
-- Visual milestone browser
-- Revert functionality
-- Git integration
+**Initial Release** of Milestone Manager with core features:
+
+- **Milestone Management**: Create and manage code milestones
+- **Visual Browser**: Interactive milestone browser interface
+- **Revert Functionality**: One-click reversion to previous milestones
+- **Git Integration**: Seamless integration with git repositories
 
 ## Contributing
 
