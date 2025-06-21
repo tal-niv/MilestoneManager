@@ -152,7 +152,7 @@ class MilestoneManager {
                 // Remove files matching the ignored files pattern
                 await this.filterIgnoredFiles(workspacePath);
                 // Create milestone commit
-                await execAsync(`git commit --allow-empty -m "Milestone: ${note || 'No note provided'}"`, { cwd: workspacePath });
+                await execAsync(`git commit --allow-empty -m "feat: ${note || 'No note provided'} saved as milestone"`, { cwd: workspacePath });
                 // Try to push
                 try {
                     await execAsync('git push', { cwd: workspacePath });
@@ -252,7 +252,7 @@ class MilestoneManager {
             const workspacePath = this.getWorkspacePath();
             // Get all milestone commits that are on the current branch but not on origin/HEAD
             // This shows only commits unique to the current branch
-            const { stdout } = await execAsync(`git log origin/HEAD.. --pretty=format:"%H|||%s|||%ad|||%ai" --date=short --grep="^Milestone:" -n 50`, { cwd: workspacePath });
+            const { stdout } = await execAsync(`git log origin/HEAD.. --pretty=format:"%H|||%s|||%ad|||%ai" --date=short --grep="^feat:.*saved as milestone" -n 50`, { cwd: workspacePath });
             if (!stdout.trim()) {
                 return [];
             }
@@ -262,9 +262,11 @@ class MilestoneManager {
                 const [hash, message, date, datetime] = line.split('|||');
                 // Extract time from datetime (format: YYYY-MM-DD HH:MM:SS +TIMEZONE)
                 const time = datetime.split(' ')[1];
+                // Clean up the message for display: remove "feat: " prefix and " saved as milestone" suffix
+                const cleanMessage = message.replace(/^feat:\s*/, '').replace(/\s*saved as milestone$/, '');
                 return {
                     hash,
-                    message,
+                    message: cleanMessage,
                     date,
                     time
                 };
@@ -290,7 +292,7 @@ class MilestoneManager {
         const workspacePath = this.getWorkspacePath();
         try {
             // Check for milestone commits that are on the current branch but not on origin/HEAD
-            const { stdout } = await execAsync(`git log origin/HEAD.. --grep="^Milestone:" -n 1`, { cwd: workspacePath });
+            const { stdout } = await execAsync(`git log origin/HEAD.. --grep="^feat:.*saved as milestone" -n 1`, { cwd: workspacePath });
             return !!stdout.trim();
         }
         catch (error) {

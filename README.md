@@ -7,6 +7,7 @@ A VS Code extension that helps you create and manage code milestones through git
 ## Features
 
 - **Milestone Creation**: Create named milestones at any point in your development process
+- **Conventional Commits**: Strict adherence to conventional commits format with `feat: [message] saved as milestone`
 - **Visual Management**: Dedicated activity bar view for managing all your milestones
 - **Easy Navigation**: Quick access to all milestones through the sidebar
 - **Git Integration**: Automatic git commit and tracking for each milestone
@@ -144,6 +145,12 @@ None at the moment.
 ⚠️ **Git Operations Warning**: This extension performs force push operations and branch alterations. Make sure you understand the implications and have the necessary permissions.
 
 ## Release Notes
+
+### 1.0.4
+
+- **Conventional Commits**: Milestone commits now follow strict conventional commits format (`feat: [message] saved as milestone`)
+- **Improved Git Standards**: Enhanced compliance with modern Git commit message conventions
+- **Clean Display**: Milestone names are displayed cleanly in the UI while maintaining conventional format in Git history
 
 ### 1.0.3
 
